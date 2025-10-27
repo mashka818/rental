@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FCM Test - RentalGuru</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    button {
+      padding: 10px 15px;
+      margin: 5px;
+      background: #4285f4;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover { background: #3367d6; }
+    button:disabled {
+      background: #cccccc;
+      cursor: not-allowed;
+    }
+    pre {
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+    .error { color: #d32f2f; }
+    .success { color: #388e3c; }
+    #loading {
+      display: none;
+      margin: 10px 0;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <h1>Тестирование FCM уведомлений</h1>
+
+  <div id="app">
+    <p id="status">Инициализация приложения...</p>
+
+    <div id="controls" style="display: none;">
+      <button id="request-permission">Разрешить уведомления</button>
+      <button id="get-token" disabled>Получить FCM токен</button>
+    </div>
+
+    <div id="loading">Загрузка...</div>
+
+    <h2>Токен:</h2>
+    <pre id="token-output">Токен появится здесь</pre>
+
+    <h2>Логи:</h2>
+    <pre id="logs"></pre>
+  </div>
+
+  <!-- Альтернативная загрузка Firebase если CDN не сработал -->
+  <script>
+    function loadFirebase() {
+      return new Promise((resolve, reject) => {
+        // Проверяем, возможно Firebase уже загружен
+        if (typeof firebase !== 'undefined') {
+          return resolve();
+        }
+
+        // Создаем скрипты для загрузки
+        const firebaseAppScript = document.createElement('script');
+        firebaseAppScript.src = 'https://www.gstatic.com/firebasejs/9.14.0/firebase-app-compat.js';
+        firebaseAppScript.onload = () => {
+          const messagingScript = document.createElement('script');
+          messagingScript.src = 'https://www.gstatic.com/firebasejs/9.14.0/firebase-messaging-compat.js';
+          messagingScript.onload = resolve;
+          messagingScript.onerror = () => reject(new Error('Не удалось загрузить firebase-messaging'));
+          document.head.appendChild(messagingScript);
+        };
+        firebaseAppScript.onerror = () => reject(new Error('Не удалось загрузить firebase-app'));
+        document.head.appendChild(firebaseAppScript);
+      });
+    }
+
+    // Функция для добавления логов
+    function log(message, isError = false) {
+      const logsEl = document.getElementById('logs');
+      const timestamp = new Date().toLocaleTimeString();
+      const logEntry = document.createElement('div');
+      logEntry.textContent = `[${timestamp}] ${message}`;
+      logEntry.className = isError ? 'error' : '';
+      logsEl.appendChild(logEntry);
+      logsEl.scrollTop = logsEl.scrollHeight;
+      console.log(message);
+    }
+
+    // Основная функция инициализации
+    async function initializeApp() {
+      try {
+        const statusEl = document.getElementById('status');
+        statusEl.textContent = 'Загрузка Firebase...';
+
+        // 1. Загружаем Firebase
+        await loadFirebase();
+        log('Библиотеки Firebase загружены');
+        statusEl.textContent = 'Firebase загружен, проверка поддержки...';
+
+        // 2. Проверяем поддержку браузера
+        if (!('serviceWorker' in navigator)) {
+          throw new Error('Ваш браузер не поддерживает Service Worker');
+        }
+
+        if (!('PushManager' in window)) {
+          throw new Error('Ваш браузер не поддерживает Push API');
+        }
+
+        if (!('Notification' in window)) {
+          throw new Error('Ваш браузер не поддерживает Notifications API');
+        }
+
+        // 3. Инициализируем Firebase
+        log('Инициализация Firebase...');
+        const firebaseConfig = {
+          apiKey: "AIzaSyAVFtJ9isbDXFaLbmJJcDdpMA8jsl_ZyOU",
+          authDomain: "rental-guru-465d7.firebaseapp.com",
+          projectId: "rental-guru-465d7",
+          storageBucket: "rental-guru-465d7.appspot.com",
+          messagingSenderId: "274995950667",
+          appId: "1:274995950667:web:e3872098a2b49116acc9ce",
+          measurementId: "G-K2WEZKWG2W"
+        };
+
+        const app = firebase.initializeApp(firebaseConfig);
+        const messaging = firebase.messaging(app);
+        log('Firebase инициализирован успешно');
+
+        // 4. Показываем элементы управления
+        document.getElementById('controls').style.display = 'block';
+        statusEl.textContent = 'Готово к работе';
+        statusEl.className = '';
+
+        // 5. Настраиваем обработчики кнопок
+        document.getElementById('request-permission').addEventListener('click', () => requestPermission(messaging));
+        document.getElementById('get-token').addEventListener('click', () => getFCMToken(messaging));
+
+        // 6. Проверяем текущие разрешения
+        updatePermissionUI();
+
+      } catch (error) {
+        const statusEl = document.getElementById('status');
+        statusEl.textContent = 'Ошибка: ' + error.message;
+        statusEl.className = 'error';
+        log('Ошибка инициализации: ' + error.message, true);
+
+        // Для Edge добавляем дополнительные советы
+        if (navigator.userAgent.includes('Edg/')) {
+          log('Для Microsoft Edge попробуйте:', true);
+          log('1. Открыть обычное окно (не приватное)', true);
+          log('2. Очистить разрешения для сайта в настройках Edge', true);
+          log('3. Отключить блокировку трекеров на время теста', true);
+        }
+      }
+    }
+
+    // Обновляем UI в соответствии с разрешениями
+    function updatePermissionUI() {
+      const permissionBtn = document.getElementById('request-permission');
+      const tokenBtn = document.getElementById('get-token');
+
+      if (Notification.permission === 'granted') {
+        permissionBtn.textContent = 'Уведомления разрешены';
+        permissionBtn.disabled = true;
+        tokenBtn.disabled = false;
+      } else if (Notification.permission === 'denied') {
+        permissionBtn.textContent = 'Уведомления заблокированы';
+        permissionBtn.disabled = true;
+        tokenBtn.disabled = true;
+      } else {
+        permissionBtn.textContent = 'Разрешить уведомления';
+        permissionBtn.disabled = false;
+        tokenBtn.disabled = true;
+      }
+    }
+
+    // Запрос разрешения на уведомления
+    async function requestPermission(messaging) {
+      try {
+        document.getElementById('loading').style.display = 'block';
+        log('Запрос разрешения на уведомления...');
+
+        const permission = await Notification.requestPermission();
+        log(`Результат запроса: ${permission}`);
+
+        updatePermissionUI();
+
+        if (permission !== 'granted') {
+          throw new Error('Пользователь отклонил разрешение');
+        }
+
+        log('Разрешение получено');
+        document.getElementById('status').textContent = 'Уведомления разрешены';
+        document.getElementById('status').className = 'success';
+
+      } catch (error) {
+        log('Ошибка запроса разрешения: ' + error.message, true);
+        document.getElementById('status').textContent = 'Ошибка: ' + error.message;
+        document.getElementById('status').className = 'error';
+      } finally {
+        document.getElementById('loading').style.display = 'none';
+      }
+    }
+
+    // Получение FCM токена
+    async function getFCMToken(messaging) {
+      try {
+        document.getElementById('loading').style.display = 'block';
+        log('Начало получения токена...');
+
+        if (Notification.permission !== 'granted') {
+          throw new Error('Нет разрешения на уведомления');
+        }
+
+        log('Регистрация Service Worker...');
+        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+          scope: '/',
+          updateViaCache: 'none'
+        });
+
+        log('Ожидание активации Service Worker...');
+        await waitForSWActivation(registration);
+
+        log('Получение токена...');
+        const token = await messaging.getToken({
+          vapidKey: 'BKKf7beRVHddoNDzr3XwDSNyJyZD_cD3_IrvANTsxLv3rA068b4vfy81JWbwUv4Iaz5DSXQ5ufKqa9J49pSablk',
+          serviceWorkerRegistration: registration
+        });
+
+        if (!token) {
+          throw new Error('Не удалось получить токен');
+        }
+
+        log('Токен получен успешно');
+        document.getElementById('token-output').textContent = token;
+        document.getElementById('status').textContent = 'Токен получен!';
+        document.getElementById('status').className = 'success';
+
+      } catch (error) {
+        log('Ошибка получения токена: ' + error.message, true);
+        document.getElementById('status').textContent = 'Ошибка: ' + error.message;
+        document.getElementById('status').className = 'error';
+      } finally {
+        document.getElementById('loading').style.display = 'none';
+      }
+    }
+
+    // Ожидание активации Service Worker
+    function waitForSWActivation(registration) {
+      return new Promise((resolve, reject) => {
+        if (registration.active) {
+          return resolve();
+        }
+
+        const timer = setTimeout(() => {
+          reject(new Error('Таймаут активации Service Worker'));
+        }, 5000);
+
+        registration.addEventListener('updatefound', () => {
+          const worker = registration.installing;
+          worker.addEventListener('statechange', () => {
+            if (worker.state === 'activated') {
+              clearTimeout(timer);
+              resolve();
+            }
+          });
+        });
+      });
+    }
+
+    // Запускаем приложение
+    document.addEventListener('DOMContentLoaded', initializeApp);
+  </script>
+</body>
+</html>
