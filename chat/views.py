@@ -393,7 +393,8 @@ class RequestRentViewSet(viewsets.ModelViewSet):
                 raise DRFValidationError("Запрашиваемый период недоступен для данного транспортного средства.")
 
             # Проверка на минимальное и максимальное количество дней аренды
-            rental_days = (request_end_date - request_start_date).days + 1
+            # Используем ту же логику что и в RequestRent.rental_days
+            rental_days = max(1, (request_end_date - request_start_date).days)
             min_days = vehicle_instance.min_rent_day
             max_days = vehicle_instance.max_rent_day
 

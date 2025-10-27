@@ -219,7 +219,18 @@ class SetPasswordView(APIView):
             return Response({"error": "Неверный тип действия."}, status=status.HTTP_400_BAD_REQUEST)
 
         redis_1.delete(f"auth_{email}")
-        return Response({"message": message}, status=status.HTTP_200_OK)
+        
+        # Автоматическая авторизация после регистрации
+        refresh = RefreshToken.for_user(user)
+        response_data = {
+            "message": message,
+            "user_id": user.id,
+            "email": user.email,
+            "refresh": str(refresh),
+            "access": str(refresh.access_token)
+        }
+        
+        return Response(response_data, status=status.HTTP_200_OK if cache_data['action'] == 'reset_password' else status.HTTP_201_CREATED)
 
 
 @extend_schema(summary="Пользователи CRUD", description="""\nРегистрация, получение списка пользователей, 

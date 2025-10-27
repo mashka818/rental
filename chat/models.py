@@ -52,7 +52,19 @@ class RequestRent(models.Model):
     def rental_days(self):
         """Подсчитывает количество дней аренды."""
         if self.start_date and self.end_date:
-            return (self.end_date - self.start_date).days + 1
+            # Если указано время начала и окончания, считаем точные сутки
+            if self.start_time and self.end_time:
+                from datetime import datetime
+                import math
+                start_datetime = datetime.combine(self.start_date, self.start_time)
+                end_datetime = datetime.combine(self.end_date, self.end_time)
+                delta = end_datetime - start_datetime
+                total_hours = delta.total_seconds() / 3600
+                # Округляем вверх до полных суток (каждые начатые 24 часа = 1 день)
+                return max(1, math.ceil(total_hours / 24))
+            # Если время не указано, считаем календарные дни (23-24 число = 1 день)
+            days_diff = (self.end_date - self.start_date).days
+            return max(1, days_diff if days_diff > 0 else 1)
         return 0
 
     def create_chat(self):
