@@ -28,15 +28,9 @@ def handle_request_rent_post_save(sender, instance, created, **kwargs):
 
         chat = Chat.objects.get(request_rent=instance)
 
-        # Проверяем, что есть успешный платеж перед созданием поездки
-        from payment.models import Payment
-        successful_payment = Payment.objects.filter(
-            request_rent=instance, 
-            status='success'
-        ).exists()
-
-        # Создаем Trip только если платеж успешно проведен
-        if successful_payment and not Trip.objects.filter(
+        # Создаем Trip со статусом 'started' (В процессе) при accept
+        # НЕ проверяем оплату - она будет позже!
+        if not Trip.objects.filter(
             object_id=instance.object_id,
             start_date=instance.start_date,
             end_date=instance.end_date,
@@ -51,5 +45,6 @@ def handle_request_rent_post_save(sender, instance, created, **kwargs):
                 start_time=instance.start_time,
                 end_time=instance.end_time,
                 total_cost=instance.total_cost,
-                chat=chat
+                chat=chat,
+                status='started'  # Статус "В процессе" - ждем оплату
             )
