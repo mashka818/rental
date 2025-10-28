@@ -180,8 +180,30 @@ class TinkoffCallbackView(APIView):
 
             trip = Trip.objects.filter(chat=payment.request_rent.chat).first()
             if trip:
-                trip.status = 'started'  # TODO: Поменять статус
+                trip.status = 'current'
                 trip.save()
+            else:
+                # Создаем Trip, если его еще нет
+                request_rent = payment.request_rent
+                if request_rent.chat:
+                    trip = Trip.objects.create(
+                        organizer=request_rent.organizer,
+                        content_type=request_rent.content_type,
+                        object_id=request_rent.object_id,
+                        start_date=request_rent.start_date,
+                        end_date=request_rent.end_date,
+                        start_time=request_rent.start_time,
+                        end_time=request_rent.end_time,
+                        total_cost=request_rent.total_cost,
+                        chat=request_rent.chat,
+                        status='current'
+                    )
+                    logger.info(f"Trip создан для чата {request_rent.chat.id} после успешной оплаты")
+                else:
+                    logger.error(f"Не удалось создать Trip: у заявки {request_rent.id} нет чата")
+            
+            # Отправляем уведомления о успешной оплате
+            if trip:
                 try:
                     content = f"Оплачена заявка на аренду {trip.vehicle}. Начало аренды: {trip.start_date}/{trip.start_time}"
                     Notification.objects.get_or_create(
@@ -194,8 +216,6 @@ class TinkoffCallbackView(APIView):
                     )
                 except Exception as e:
                     logger.error(f"Ошибка создания уведомления: {e}")
-            else:
-                logger.warning(f"Trip для чата {payment.request_rent.chat} не найден.")
             return Response({"message": "Платеж успешно подтвержден"}, status=status.HTTP_200_OK)
 
         elif status_from_tinkoff in ['CANCELLED', 'REJECTED']:

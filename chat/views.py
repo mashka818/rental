@@ -8,6 +8,8 @@ from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from rest_framework import viewsets, permissions, status, filters
 from rest_framework.pagination import LimitOffsetPagination
+from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -74,6 +76,80 @@ class TripViewSet(viewsets.ModelViewSet):
             return queryset.filter(object_id__in=vehicle_ids)
 
         return Trip.objects.none()
+
+    @action(detail=True, methods=['post'], url_path='cancel-by-client')
+    def cancel_by_client(self, request, pk=None):
+        """
+        Отмена поездки клиентом с автоматическим созданием обращения в техподдержку
+        """
+        trip = self.get_object()
+        
+        # Проверяем, что это клиент (арендатор)
+        if trip.organizer != request.user:
+            return Response(
+                {"detail": "Только арендатор может отменить свою поездку."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Проверяем, что поездка еще не отменена/завершена
+        if trip.status in ['canceled', 'finished']:
+            return Response(
+                {"detail": "Поездка уже завершена или отменена."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Обновляем статус через сериализатор для корректной обработки
+        serializer = self.get_serializer(trip, data={'status': 'canceled'}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        
+        # Создаем обращение в техподдержку
+        chat_support, _ = ChatSupport.objects.get_or_create(creator=request.user)
+        topic, _ = TopicSupport.objects.get_or_create(name="Отмена поездки")
+        topic.count += 1
+        topic.save()
+        
+        IssueSupport.objects.create(
+            chat=chat_support,
+            topic=topic,
+            description=f"Отменена поездка #{trip.id} с транспортом {trip.vehicle}"
+        )
+        
+        return Response(
+            {"detail": "Поездка отменена. Создано обращение в техподдержку."},
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=True, methods=['post'], url_path='finish-by-client')
+    def finish_by_client(self, request, pk=None):
+        """
+        Завершение поездки клиентом
+        """
+        trip = self.get_object()
+        
+        # Проверяем, что это клиент (арендатор)
+        if trip.organizer != request.user:
+            return Response(
+                {"detail": "Только арендатор может завершить свою поездку."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Проверяем, что поездка еще не завершена/отменена
+        if trip.status in ['canceled', 'finished']:
+            return Response(
+                {"detail": "Поездка уже завершена или отменена."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Обновляем статус через сериализатор для корректной обработки
+        serializer = self.get_serializer(trip, data={'status': 'finished'}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        
+        return Response(
+            {"detail": "Поездка завершена."},
+            status=status.HTTP_200_OK
+        )
 
 
 @extend_schema(summary="Чат между арендатором и арендодателем",

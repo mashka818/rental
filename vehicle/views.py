@@ -1,4 +1,5 @@
 import os
+import logging
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.contrib.contenttypes.models import ContentType
@@ -14,6 +15,8 @@ from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+logger = logging.getLogger(__name__)
 
 from RentalGuru import settings
 from app.models import Lessor
@@ -80,6 +83,39 @@ class BaseViewSet(viewsets.ModelViewSet):
         elif self.action in ['update', 'partial_update', 'destroy']:
             self.permission_classes = [IsAuthenticated, (IsAdminOrOwner | VehiclesAccess)]
         return super().get_permissions()
+
+    def create(self, request, *args, **kwargs):
+        try:
+            logger.info(f"Creating vehicle. User: {request.user.id}, Data keys: {request.data.keys()}")
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            logger.info(f"Vehicle created successfully. ID: {serializer.instance.id}")
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        except Exception as e:
+            logger.error(f"Error creating vehicle. User: {request.user.id}, Error: {str(e)}", exc_info=True)
+            return Response(
+                {"detail": f"Ошибка при создании транспорта: {str(e)}"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    def update(self, request, *args, **kwargs):
+        try:
+            partial = kwargs.pop('partial', False)
+            instance = self.get_object()
+            logger.info(f"Updating vehicle {instance.id}. User: {request.user.id}, Data keys: {request.data.keys()}")
+            serializer = self.get_serializer(instance, data=request.data, partial=partial)
+            serializer.is_valid(raise_exception=True)
+            self.perform_update(serializer)
+            logger.info(f"Vehicle {instance.id} updated successfully")
+            return Response(serializer.data)
+        except Exception as e:
+            logger.error(f"Error updating vehicle. Instance: {instance.id}, User: {request.user.id}, Error: {str(e)}", exc_info=True)
+            return Response(
+                {"detail": f"Ошибка при обновлении транспорта: {str(e)}"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     def perform_update(self, serializer):
         instance = serializer.save()

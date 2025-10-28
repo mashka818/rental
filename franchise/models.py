@@ -169,9 +169,12 @@ class Franchise(models.Model):
         return query.count()
 
     def get_royalty(self, period='all', is_previous=False):
-        """ Роялти """
+        """ 
+        Роялти - процент от выручки, который платит франчайзи
+        Формула: revenue * commission / 100
+        """
         revenue = self.get_total_revenue(period, is_previous)
-        return (revenue/100) * Decimal(self.commission)
+        return (revenue * Decimal(self.commission)) / Decimal(100)
 
     def get_total_completed_orders(self, period='all', is_previous=False):
         date_range = self.get_previous_date_range(period) if is_previous else self.get_date_range(period)

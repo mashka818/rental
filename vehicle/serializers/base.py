@@ -257,23 +257,28 @@ class BaseVehicleCreateSerializer(BaseVehicleSerializer):
 
         if not model_id:
             raise serializers.ValidationError("Модель транспортного средства не указана.")
-        vehicle_model = VehicleModel.objects.get(id=model_id)
+        
+        try:
+            vehicle_model = VehicleModel.objects.get(id=model_id.id if hasattr(model_id, 'id') else model_id)
+        except VehicleModel.DoesNotExist:
+            raise serializers.ValidationError(f"Модель с ID {model_id} не найдена.")
 
-        instance = self.instance
-        if isinstance(instance, Auto):
+        # Определяем тип транспорта по классу сериализатора
+        serializer_class_name = self.__class__.__name__
+        if 'Auto' in serializer_class_name:
             expected_vehicle_type = 'auto'
-        elif isinstance(instance, Bike):
+        elif 'Bike' in serializer_class_name:
             expected_vehicle_type = 'bike'
-        elif isinstance(instance, Ship):
+        elif 'Ship' in serializer_class_name:
             expected_vehicle_type = 'ship'
-        elif isinstance(instance, Helicopter):
+        elif 'Helicopter' in serializer_class_name:
             expected_vehicle_type = 'helicopter'
-        elif isinstance(instance, SpecialTechnic):
+        elif 'SpecialTechnic' in serializer_class_name:
             expected_vehicle_type = 'special_technic'
         else:
             raise serializers.ValidationError("Неизвестный тип транспортного средства.")
 
-        if vehicle_model.vehicle_type != expected_vehicle_type:
+        if vehicle_model.vehicle_type and vehicle_model.vehicle_type != expected_vehicle_type:
             raise serializers.ValidationError(
                 f"Модель {vehicle_model.name} не подходит для типа транспорта '{expected_vehicle_type}'."
             )

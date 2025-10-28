@@ -28,7 +28,15 @@ def handle_request_rent_post_save(sender, instance, created, **kwargs):
 
         chat = Chat.objects.get(request_rent=instance)
 
-        if not Trip.objects.filter(
+        # Проверяем, что есть успешный платеж перед созданием поездки
+        from payment.models import Payment
+        successful_payment = Payment.objects.filter(
+            request_rent=instance, 
+            status='success'
+        ).exists()
+
+        # Создаем Trip только если платеж успешно проведен
+        if successful_payment and not Trip.objects.filter(
             object_id=instance.object_id,
             start_date=instance.start_date,
             end_date=instance.end_date,

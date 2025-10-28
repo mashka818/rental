@@ -217,7 +217,7 @@ class BaseChatConsumer(AsyncWebsocketConsumer):
             message_data = self.format_message(message, user)
 
             # Уведомления для оффлайн пользователей
-            # await self.notify_offline_users(user.id)
+            await self.notify_offline_users(user.id)
 
             # Отправление сообщения всем участникам чата
             await self.channel_layer.group_send(
@@ -275,10 +275,12 @@ class BaseChatConsumer(AsyncWebsocketConsumer):
 
         users = User.objects.filter(id__in=user_ids)
         for user in users:
-            Notification.objects.create(
+            notification = Notification.objects.create(
                 user=user,
                 content="Получено новое сообщение"
             )
+            # Отправляем push-уведомление
+            notification.send_notification()
 
     async def handle_update_message(self, data):
         try:
