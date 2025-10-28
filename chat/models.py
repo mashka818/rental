@@ -292,7 +292,7 @@ class Trip(models.Model):
         ('finished', 'Завершить'),
         ('canceled', 'Отменить')
     )
-    status = models.CharField(max_length=8, default='current', choices=STATUS_CHOICES, verbose_name='Статус')
+    status = models.CharField(max_length=8, default='started', choices=STATUS_CHOICES, verbose_name='Статус')
     organizer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
                                   related_name='trip_organized_trips', verbose_name='Арендатор')
 
