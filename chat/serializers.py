@@ -310,6 +310,9 @@ class RequestRentSerializer(serializers.ModelSerializer):
         representation = super().to_representation(instance)
         representation['vehicle_type'] = instance.content_type.model
         representation['vehicle_id'] = instance.object_id
+        
+        # Добавляем rental_days для корректного отображения на фронте
+        representation['rental_days'] = instance.rental_days
 
         # ИЗМЕНЕНИЕ: Улучшенное получение amount и payment_id
         if hasattr(instance, 'prefetched_payment_amount') and instance.prefetched_payment_amount is not None:
