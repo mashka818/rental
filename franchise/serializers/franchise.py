@@ -296,7 +296,7 @@ class CitySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = City
-        fields = ['id', 'title', 'finished_trips_count']
+        fields = ['id', 'title', 'latitude', 'longitude', 'finished_trips_count']
 
 
 class RequestAddLessorCreateSerializer(serializers.ModelSerializer):
