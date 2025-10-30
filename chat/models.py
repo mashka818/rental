@@ -121,8 +121,23 @@ class RequestRent(models.Model):
             total_duration = end_datetime - start_datetime
             total_hours = total_duration.total_seconds() / 3600
 
-            # Если аренда меньше суток, используем почасовой тариф
-            if total_hours <= 24:
+            # Если аренда >= 8 часов, проверяем наличие дневного тарифа
+            if total_hours >= 8:
+                daily_price = RentPrice.objects.filter(vehicle=self.vehicle, name='day').first()
+                if daily_price:
+                    # Есть дневной тариф - используем его вместо почасового
+                    # Переходим к обычной логике расчета по дням (ниже)
+                    pass
+                else:
+                    # Нет дневного тарифа - продолжаем считать по часам
+                    total_cost = total_hours * float(hourly_price.total)
+                    
+                    if self.delivery and self.delivery_cost > 0:
+                        total_cost += float(self.vehicle.price_delivery)
+                    
+                    return total_cost
+            else:
+                # Меньше 8 часов - всегда почасовой тариф
                 total_cost = total_hours * float(hourly_price.total)
 
                 # Добавление стоимости доставки

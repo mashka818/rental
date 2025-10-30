@@ -477,11 +477,36 @@ class RequestRentViewSet(viewsets.ModelViewSet):
             # Проверяем, является ли это почасовой арендой
             request_start_time = request.data.get('start_time')
             request_end_time = request.data.get('end_time')
-            is_hourly_rental = (
-                request_start_date == request_end_date and
-                request_start_time and request_end_time and
-                vehicle_instance.rent_prices.filter(name='hour').exists()
-            )
+            
+            is_hourly_rental = False
+            
+            if request_start_time and request_end_time and vehicle_instance.rent_prices.filter(name='hour').exists():
+                # Считаем количество часов
+                from datetime import datetime, time as dt_time
+                
+                if isinstance(request_start_time, str):
+                    start_time_obj = datetime.strptime(request_start_time, '%H:%M:%S').time()
+                else:
+                    start_time_obj = request_start_time
+                    
+                if isinstance(request_end_time, str):
+                    end_time_obj = datetime.strptime(request_end_time, '%H:%M:%S').time()
+                else:
+                    end_time_obj = request_end_time
+                
+                start_datetime = datetime.combine(request_start_date, start_time_obj)
+                end_datetime = datetime.combine(request_end_date, end_time_obj)
+                total_hours = (end_datetime - start_datetime).total_seconds() / 3600
+                
+                # Если < 8 часов - всегда почасовая аренда
+                if total_hours < 8:
+                    is_hourly_rental = True
+                # Если >= 8 часов, проверяем наличие дневного тарифа
+                elif total_hours >= 8:
+                    has_daily_price = vehicle_instance.rent_prices.filter(name='day').exists()
+                    if not has_daily_price:
+                        # Нет дневного тарифа - считаем почасовой
+                        is_hourly_rental = True
 
             # Если это НЕ почасовая аренда, проверяем min/max дней
             if not is_hourly_rental:
