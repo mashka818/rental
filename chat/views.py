@@ -474,12 +474,23 @@ class RequestRentViewSet(viewsets.ModelViewSet):
             min_days = vehicle_instance.min_rent_day
             max_days = vehicle_instance.max_rent_day
 
-            if rental_days < min_days or rental_days > max_days:
-                warning_message = (
-                    f"Период аренды должен быть между {min_days} и {max_days} днями. "
-                    f"Текущий период: {rental_days} дней."
-                )
-                return Response({'warning': warning_message}, status=status.HTTP_400_BAD_REQUEST)
+            # Проверяем, является ли это почасовой арендой
+            request_start_time = request.data.get('start_time')
+            request_end_time = request.data.get('end_time')
+            is_hourly_rental = (
+                request_start_date == request_end_date and
+                request_start_time and request_end_time and
+                vehicle_instance.rent_prices.filter(name='hour').exists()
+            )
+
+            # Если это НЕ почасовая аренда, проверяем min/max дней
+            if not is_hourly_rental:
+                if rental_days < min_days or rental_days > max_days:
+                    warning_message = (
+                        f"Период аренды должен быть между {min_days} и {max_days} днями. "
+                        f"Текущий период: {rental_days} дней."
+                    )
+                    return Response({'warning': warning_message}, status=status.HTTP_400_BAD_REQUEST)
 
         # Создание записи аренды после всех проверок
         serializer = self.get_serializer(data=request.data)
