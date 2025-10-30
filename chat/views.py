@@ -482,8 +482,6 @@ class RequestRentViewSet(viewsets.ModelViewSet):
             
             if request_start_time and request_end_time and vehicle_instance.rent_prices.filter(name='hour').exists():
                 # Считаем количество часов
-                from datetime import datetime, time as dt_time
-                
                 if isinstance(request_start_time, str):
                     start_time_obj = datetime.strptime(request_start_time, '%H:%M:%S').time()
                 else:
@@ -494,9 +492,9 @@ class RequestRentViewSet(viewsets.ModelViewSet):
                 else:
                     end_time_obj = request_end_time
                 
-                start_datetime = datetime.combine(request_start_date, start_time_obj)
-                end_datetime = datetime.combine(request_end_date, end_time_obj)
-                total_hours = (end_datetime - start_datetime).total_seconds() / 3600
+                start_dt = datetime.combine(request_start_date, start_time_obj)
+                end_dt = datetime.combine(request_end_date, end_time_obj)
+                total_hours = (end_dt - start_dt).total_seconds() / 3600
                 
                 # Если < 8 часов - всегда почасовая аренда
                 if total_hours < 8:
