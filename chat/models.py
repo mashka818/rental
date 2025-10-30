@@ -126,8 +126,14 @@ class RequestRent(models.Model):
                 daily_price = RentPrice.objects.filter(vehicle=self.vehicle, name='day').first()
                 if daily_price:
                     # Есть дневной тариф - используем его вместо почасового
-                    # Переходим к обычной логике расчета по дням (ниже)
-                    pass
+                    # Считаем как 1 день и переходим к обычной логике расчета
+                    rental_days = 1
+                    total_cost = float(daily_price.total)
+                    
+                    if self.delivery:
+                        total_cost += float(self.vehicle.price_delivery)
+                    
+                    return total_cost
                 else:
                     # Нет дневного тарифа - продолжаем считать по часам
                     total_cost = total_hours * float(hourly_price.total)
