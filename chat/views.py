@@ -474,14 +474,14 @@ class RequestRentViewSet(viewsets.ModelViewSet):
             min_days = vehicle_instance.min_rent_day
             max_days = vehicle_instance.max_rent_day
 
-            # Проверяем, является ли это почасовой арендой
+            # Проверяем, является ли это арендой с указанием времени (почасовая или дневная в пределах одного дня)
             request_start_time = request.data.get('start_time')
             request_end_time = request.data.get('end_time')
             
             is_hourly_rental = False
             
-            if request_start_time and request_end_time and vehicle_instance.rent_prices.filter(name='hour').exists():
-                # Считаем количество часов
+            if request_start_time and request_end_time and request_start_date == request_end_date:
+                # Аренда в пределах одного дня с указанием времени
                 if isinstance(request_start_time, str):
                     start_time_obj = datetime.strptime(request_start_time, '%H:%M:%S').time()
                 else:
@@ -496,15 +496,16 @@ class RequestRentViewSet(viewsets.ModelViewSet):
                 end_dt = datetime.combine(request_end_date, end_time_obj)
                 total_hours = (end_dt - start_dt).total_seconds() / 3600
                 
-                # Если < 8 часов - всегда почасовая аренда
-                if total_hours < 8:
+                # Если >= 8 часов и есть дневной тариф - считаем как дневную аренду
+                if total_hours >= 8 and vehicle_instance.rent_prices.filter(name='day').exists():
+                    # Это дневная аренда, не почасовая - не блокируем проверкой min_days
+                    is_hourly_rental = True  # Пропускаем проверку дней
+                # Если < 8 часов или нет дневного тарифа, нужен почасовой
+                elif vehicle_instance.rent_prices.filter(name='hour').exists():
                     is_hourly_rental = True
-                # Если >= 8 часов, проверяем наличие дневного тарифа
-                elif total_hours >= 8:
-                    has_daily_price = vehicle_instance.rent_prices.filter(name='day').exists()
-                    if not has_daily_price:
-                        # Нет дневного тарифа - считаем почасовой
-                        is_hourly_rental = True
+                else:
+                    # Нет ни дневного ни почасового - ошибка будет в calculate_rent_price
+                    pass
 
             # Если это НЕ почасовая аренда, проверяем min/max дней
             if not is_hourly_rental:
