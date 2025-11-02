@@ -120,36 +120,6 @@ class TripViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK
         )
 
-    @action(detail=True, methods=['post'], url_path='finish-by-client')
-    def finish_by_client(self, request, pk=None):
-        """
-        Завершение поездки клиентом
-        """
-        trip = self.get_object()
-        
-        # Проверяем, что это клиент (арендатор)
-        if trip.organizer != request.user:
-            return Response(
-                {"detail": "Только арендатор может завершить свою поездку."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        # Проверяем, что поездка еще не завершена/отменена
-        if trip.status in ['canceled', 'finished']:
-            return Response(
-                {"detail": "Поездка уже завершена или отменена."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Обновляем статус через сериализатор для корректной обработки
-        serializer = self.get_serializer(trip, data={'status': 'finished'}, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        
-        return Response(
-            {"detail": "Поездка завершена."},
-            status=status.HTTP_200_OK
-        )
 
 
 @extend_schema(summary="Чат между арендатором и арендодателем",
