@@ -98,10 +98,50 @@ class TripViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Обновляем статус через сериализатор для корректной обработки
+        # Получаем информацию о платеже ДО отмены
+        request_rent = RequestRent.objects.filter(chat=trip.chat).first()
+        payment = None
+        payment_info = {}
+        
+        if request_rent:
+            from payment.models import Payment
+            payment = Payment.objects.filter(request_rent=request_rent).first()
+            
+            if payment:
+                will_refund = payment.status == 'success' and trip.get_time_until_start().total_seconds() / 3600 > 48
+                payment_info = {
+                    'payment_id': payment.id,
+                    'amount': float(payment.amount),
+                    'deposit': float(payment.deposite),
+                    'delivery': float(payment.delivery),
+                    'will_refund': will_refund,
+                    'bonus_returned': float(request_rent.bonus) if request_rent.bonus else 0
+                }
+        
+        # Обновляем статус через сериализатор (там происходит возврат средств)
         serializer = self.get_serializer(trip, data={'status': 'canceled'}, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        
+        # Создаем сообщение в чате аренды с информацией о возврате
+        if trip.chat:
+            import json
+            cancel_message = {
+                'type': 'trip_canceled',
+                'trip_id': trip.id,
+                'canceled_by': 'renter',
+                'vehicle': str(trip.vehicle),
+                'payment_info': payment_info,
+                'start_date': str(trip.start_date),
+                'end_date': str(trip.end_date),
+                'total_cost': float(trip.total_cost)
+            }
+            
+            Message.objects.create(
+                chat=trip.chat,
+                sender=request.user,
+                content=json.dumps(cancel_message, ensure_ascii=False)
+            )
         
         # Создаем обращение в техподдержку
         chat_support, _ = ChatSupport.objects.get_or_create(creator=request.user)
