@@ -460,15 +460,22 @@ class PromoCodeSerializer(serializers.ModelSerializer):
     def get_turnover(self, obj):
         """
         Подсчет суммы успешных платежей для промокода.
+        Учитывает:
+        1. Платежи от пользователей, зарегистрировавшихся с промокодом
+        2. Платежи, где промокод был использован напрямую в заявке
         """
+        from django.db.models import Q
+        
         if not obj.influencer:
             return 0
 
+        # Получаем пользователей, зарегистрировавшихся с промокодом
         registered_users = RegistrationSource.objects.filter(
             source_type='promo',
             source_details=obj.title
         ).values_list('user', flat=True)
 
+        # Находим заявки от этих пользователей
         organizer_rents = RequestRent.objects.filter(
             organizer__in=registered_users
         )
@@ -480,12 +487,14 @@ class PromoCodeSerializer(serializers.ModelSerializer):
             ).values_list('id', flat=True)
         )
 
-        all_rents = organizer_rents | lessor_rents
+        all_rents_from_registered = organizer_rents | lessor_rents
 
+        # Считаем оборот с учетом обоих условий (избегаем дублирования через distinct)
         turnover = Payment.objects.filter(
-            request_rent__in=all_rents,
+            Q(request_rent__in=all_rents_from_registered) |  # От зарегистрированных пользователей
+            Q(promo_code=obj),  # ИЛИ где промокод использован напрямую
             status='success'
-        ).aggregate(total_sum=Sum('amount'))['total_sum'] or 0
+        ).distinct().aggregate(total_sum=Sum('amount'))['total_sum'] or 0
 
         return turnover
 
