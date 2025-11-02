@@ -124,28 +124,44 @@ class TripViewSet(viewsets.ModelViewSet):
         serializer.save()
         
         # Создаем обращение в техподдержку с полной информацией о возврате
-        import json
         chat_support, _ = ChatSupport.objects.get_or_create(creator=request.user)
         topic, _ = TopicSupport.objects.get_or_create(name="Отмена поездки")
         topic.count += 1
         topic.save()
         
-        # Создаем сообщение в чате техподдержки с информацией о платеже
-        cancel_message = {
-            'type': 'trip_canceled',
-            'trip_id': trip.id,
-            'canceled_by': 'renter',
-            'vehicle': str(trip.vehicle),
-            'payment_info': payment_info,
-            'start_date': str(trip.start_date),
-            'end_date': str(trip.end_date),
-            'total_cost': float(trip.total_cost)
-        }
+        # Формируем текстовое сообщение о возврате средств
+        message_text = f"🚫 Поездка #{trip.id} отменена\n\n"
+        message_text += f"Транспорт: {trip.vehicle}\n"
+        message_text += f"Период: {trip.start_date} — {trip.end_date}\n"
+        message_text += f"Стоимость аренды: {trip.total_cost} руб.\n\n"
+        
+        if payment_info:
+            message_text += "💳 Информация о платеже:\n"
+            message_text += f"• Комиссия платформы: {payment_info['amount']} руб.\n"
+            
+            if payment_info['deposit'] > 0:
+                message_text += f"• Депозит: {payment_info['deposit']} руб.\n"
+            
+            if payment_info['delivery'] > 0:
+                message_text += f"• Доставка: {payment_info['delivery']} руб.\n"
+            
+            if payment_info['bonus_returned'] > 0:
+                message_text += f"• Возврат бонусов: {payment_info['bonus_returned']} руб.\n"
+            
+            message_text += "\n"
+            
+            if payment_info['will_refund']:
+                message_text += f"✅ Возврат средств: {payment_info['amount']} руб.\n"
+                message_text += "Средства будут возвращены в течение 5-10 рабочих дней."
+            else:
+                message_text += "⚠️ Отмена менее чем за 48 часов до начала — возврат не производится."
+        else:
+            message_text += "ℹ️ Платеж не был совершен."
         
         MessageSupport.objects.create(
             chat=chat_support,
             sender=request.user,
-            content=json.dumps(cancel_message, ensure_ascii=False)
+            content=message_text
         )
         
         IssueSupport.objects.create(
