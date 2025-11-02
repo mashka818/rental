@@ -123,31 +123,30 @@ class TripViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         
-        # Создаем сообщение в чате аренды с информацией о возврате
-        if trip.chat:
-            import json
-            cancel_message = {
-                'type': 'trip_canceled',
-                'trip_id': trip.id,
-                'canceled_by': 'renter',
-                'vehicle': str(trip.vehicle),
-                'payment_info': payment_info,
-                'start_date': str(trip.start_date),
-                'end_date': str(trip.end_date),
-                'total_cost': float(trip.total_cost)
-            }
-            
-            Message.objects.create(
-                chat=trip.chat,
-                sender=request.user,
-                content=json.dumps(cancel_message, ensure_ascii=False)
-            )
-        
-        # Создаем обращение в техподдержку
+        # Создаем обращение в техподдержку с полной информацией о возврате
+        import json
         chat_support, _ = ChatSupport.objects.get_or_create(creator=request.user)
         topic, _ = TopicSupport.objects.get_or_create(name="Отмена поездки")
         topic.count += 1
         topic.save()
+        
+        # Создаем сообщение в чате техподдержки с информацией о платеже
+        cancel_message = {
+            'type': 'trip_canceled',
+            'trip_id': trip.id,
+            'canceled_by': 'renter',
+            'vehicle': str(trip.vehicle),
+            'payment_info': payment_info,
+            'start_date': str(trip.start_date),
+            'end_date': str(trip.end_date),
+            'total_cost': float(trip.total_cost)
+        }
+        
+        MessageSupport.objects.create(
+            chat=chat_support,
+            sender=request.user,
+            content=json.dumps(cancel_message, ensure_ascii=False)
+        )
         
         IssueSupport.objects.create(
             chat=chat_support,
