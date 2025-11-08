@@ -165,11 +165,22 @@ class TinkoffCallbackView(APIView):
             logger.error(f"Платеж с ID {payment_id} не найден.")
             raise
 
+        # Проверяем, не был ли платеж отменен ранее
+        if payment.status == 'canceled':
+            logger.info(f"Платеж {payment_id} был отменен, игнорируем webhook со статусом {status_from_tinkoff}")
+            return Response({"message": "Платеж был отменен, изменения игнорируются"}, status=status.HTTP_200_OK)
+
         if payment.status == 'success' and status_from_tinkoff == 'CONFIRMED':
             logger.info(f"Платеж {payment_id} уже обработан, повторное подтверждение игнорируется.")
             return Response({"message": "Платеж уже подтвержден"}, status=status.HTTP_200_OK)
 
         if status_from_tinkoff == 'CONFIRMED':
+            # Проверяем, не отменена ли поездка
+            trip = Trip.objects.filter(chat=payment.request_rent.chat).first()
+            if trip and trip.status in ['canceled', 'finished']:
+                logger.warning(f"Поездка {trip.id} уже отменена/завершена, не меняем статус при получении CONFIRMED для платежа {payment_id}")
+                return Response({"message": "Поездка уже отменена/завершена, изменения игнорируются"}, status=status.HTTP_200_OK)
+
             payment.status = 'success'
             payment.paid_at = now()
             payment.save()
@@ -178,10 +189,11 @@ class TinkoffCallbackView(APIView):
                 UsedPromoCode.objects.filter(user=payment.request_rent.organizer, promo_code=payment.promo_code).update(
                     used=True)
 
-            trip = Trip.objects.filter(chat=payment.request_rent.chat).first()
             if trip:
-                trip.status = 'current'
-                trip.save()
+                # Меняем статус только если поездка не отменена/завершена
+                if trip.status not in ['canceled', 'finished']:
+                    trip.status = 'current'
+                    trip.save()
             else:
                 # Создаем Trip, если его еще нет
                 request_rent = payment.request_rent
@@ -202,8 +214,8 @@ class TinkoffCallbackView(APIView):
                 else:
                     logger.error(f"Не удалось создать Trip: у заявки {request_rent.id} нет чата")
             
-            # Отправляем уведомления о успешной оплате
-            if trip:
+            # Отправляем уведомления о успешной оплате только если поездка активна
+            if trip and trip.status not in ['canceled', 'finished']:
                 try:
                     content = f"Оплачена заявка на аренду {trip.vehicle}. Начало аренды: {trip.start_date}/{trip.start_time}"
                     Notification.objects.get_or_create(
@@ -219,6 +231,11 @@ class TinkoffCallbackView(APIView):
             return Response({"message": "Платеж успешно подтвержден"}, status=status.HTTP_200_OK)
 
         elif status_from_tinkoff in ['CANCELLED', 'REJECTED']:
+            # Если платеж уже был отменен вручную, не меняем статус на failed
+            if payment.status == 'canceled':
+                logger.info(f"Платеж {payment_id} уже отменен, игнорируем статус {status_from_tinkoff} от Tinkoff")
+                return Response({"message": "Платеж уже отменен"}, status=status.HTTP_200_OK)
+            
             payment.status = 'failed'
             payment.save()
             try:
@@ -232,6 +249,16 @@ class TinkoffCallbackView(APIView):
                 {"message": f"Не удалось выполнить платеж со статусом {status_from_tinkoff}"},
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY
             )
+
+        elif status_from_tinkoff == 'REFUNDED':
+            # Обработка возврата средств от Tinkoff
+            logger.info(f"Получен статус REFUNDED для платежа {payment_id}")
+            # Если платеж уже отменен вручную, не меняем статус
+            if payment.status != 'canceled':
+                payment.status = 'canceled'
+                payment.save()
+                logger.info(f"Статус платежа {payment_id} изменен на 'canceled' после возврата")
+            return Response({"message": "Возврат средств обработан"}, status=status.HTTP_200_OK)
 
         logger.warning(f"Необработанный статус платежа: {status_from_tinkoff}")
         return Response({"message": "Необработанный статус"}, status=status.HTTP_400_BAD_REQUEST)
