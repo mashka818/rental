@@ -44,9 +44,9 @@ class FranchiseAdmin(admin.ModelAdmin):
     #inlines = [VehicleParkInline]
 
     def save_model(self, request, obj, form, change):
-        if change:
-            obj.update_total_vehicles()
         super().save_model(request, obj, form, change)
+        if change:
+            obj.save_total_vehicles()
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -63,9 +63,22 @@ class FranchiseAdmin(admin.ModelAdmin):
         return [
             ('Основная информация', {
                 'fields': (
-                    'name', 'inn', 'telephone_1', 'email_1', 'country', 'city',
+                    'name', 'inn', 'date_register', 'country', 'city', 'address',
                     'director', 'commission', 'total_vehicles'
                 )
+            }),
+            ('Контактная информация', {
+                'fields': (
+                    'telephone_1', 'telephone_2', 'email_1', 'email_2'
+                )
+            }),
+            ('Банковские реквизиты', {
+                'fields': (
+                    'ogrn', 'account_number', 'account_owner'
+                )
+            }),
+            ('Категории', {
+                'fields': ('categories',)
             }),
         ]
 
